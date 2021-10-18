@@ -30,6 +30,6 @@ func main() {
 		ws.Init(ctx, r, flags.Source())
 	})
 	ws.OnMessage(func(session *melody.Session, bytes []byte) {
-		ws.Broadcast()
+		//ws.Broadcast()
 	})
 }
