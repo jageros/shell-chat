@@ -25,19 +25,16 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"github.com/jageros/hawox/logx"
-	"github.com/jroimartin/gocui"
-	"os/signal"
-	"syscall"
+	"github.com/rocket049/gocui"
+	"log"
+	"math/rand"
 	"time"
 )
 
 var (
 	viewArr = []string{"msg", "send"}
 	active  = 1
-	g       *gocui.Gui
 )
 
 func setCurrentViewOnTop(g *gocui.Gui, name string) (*gocui.View, error) {
@@ -51,24 +48,8 @@ func nextView(g *gocui.Gui, v *gocui.View) error {
 	nextIndex := (active + 1) % len(viewArr)
 	name := viewArr[nextIndex]
 
-	out, err := g.View("send")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(out, "\nGoing from view "+v.Name()+" to "+name)
-
 	if _, err := setCurrentViewOnTop(g, name); err != nil {
 		return err
-	}
-
-	if nextIndex == 1 {
-		fmt.Fprintln(out, "")
-	}
-
-	if nextIndex == 0 || nextIndex == 3 {
-		g.Cursor = true
-	} else {
-		g.Cursor = false
 	}
 
 	active = nextIndex
@@ -82,7 +63,7 @@ func layout(g *gocui.Gui) error {
 			return err
 		}
 		v.Title = "message"
-		//v.Editable = true
+		v.Autoscroll = true
 		v.Wrap = true
 	}
 
@@ -98,12 +79,11 @@ func layout(g *gocui.Gui) error {
 			return err
 		}
 	}
-	if v, err := g.SetView("v3", maxX/4*3, 0, maxX-1, maxY-1); err != nil {
+	if v, err := g.SetView("online", maxX/4*3, 0, maxX-1, maxY-1); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
 		v.Title = "online"
-		v.Wrap = true
 	}
 	return nil
 }
@@ -112,44 +92,73 @@ func quit(g *gocui.Gui, v *gocui.View) error {
 	return gocui.ErrQuit
 }
 
-func display(msg string) error {
-	v, err := g.View("msg")
+func sendMsg(g *gocui.Gui, v *gocui.View) error {
+	byts := v.ReadEditor()
+	if len(byts) <= 0 {
+		v.Clear()
+		return v.SetCursor(0, 0)
+	}
+	str := string(byts)
+	msg, err := g.View("msg")
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(v, msg)
+
+	flag := rand.Intn(3)
+	var name string
+	switch flag {
+	case 0:
+		name = "jager"
+	case 1:
+		name = "zhe"
+	case 2:
+		name = "lu"
+	}
+
+	msgStr := fmt.Sprintf("[%d]%s(%s): %s\n", flag, name, time.Now().Format("01-02 15:04:05"), str)
+	_, err = msg.Write([]byte(msgStr))
+	if err == nil {
+		v.Clear()
+		err = v.SetCursor(0, 0)
+	}
 	return err
 }
 
-func read() (chan string, error) {
-	var ch = make(chan string, 100)
-
-	v, err := g.View("send")
-	if err != nil {
-		return nil, err
-	}
-	go func() {
-		var str string
-		for {
-			_, err := fmt.Fscanln(v, &str)
-			if err == nil {
-				ch <- str
+func arrowUp(g *gocui.Gui, v *gocui.View) error {
+	if v != nil {
+		ox, oy := v.Origin()
+		cx, cy := v.Cursor()
+		if err := v.SetCursor(cx, cy-1); err != nil && oy > 0 {
+			if err := v.SetOrigin(ox, oy-1); err != nil {
+				return err
 			}
 		}
-	}()
+	}
+	return nil
+}
 
-	return ch, nil
+func arrowDown(g *gocui.Gui, v *gocui.View) error {
+	if v != nil {
+		cx, cy := v.Cursor()
+		if err := v.SetCursor(cx, cy+1); err != nil {
+			ox, oy := v.Origin()
+			if err := v.SetOrigin(ox, oy+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func backspace(g *gocui.Gui, v *gocui.View) error {
+	v.EditDelete(true)
+	return nil
 }
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT)
-	defer cancel()
-	logx.Init(logx.InfoLevel, logx.SetFileOut("logs", "wechat"))
-	logx.Info("=============")
-	var err error
-	g, err = gocui.NewGui(gocui.OutputNormal)
+	g, err := gocui.NewGui(gocui.OutputNormal)
 	if err != nil {
-		logx.Panic(err)
+		log.Panic(err)
 	}
 	defer g.Close()
 
@@ -160,36 +169,39 @@ func main() {
 	g.SetManagerFunc(layout)
 
 	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
-		logx.Panic(err)
-	}
-	if err := g.SetKeybinding("", gocui.KeyTab, gocui.ModNone, nextView); err != nil {
-		logx.Panic(err)
+		log.Panic(err)
 	}
 
-	go func() {
-		time.Sleep(time.Second*2)
-		logx.Info("-----------")
-		ch, err := read()
-		if err != nil {
-			logx.Error(err)
-			return
-		}
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg := <-ch:
-				logx.Info(msg)
-				err := display(msg)
-				if err != nil {
-					return
-				}
-			}
-		}
-	}()
+	if err := g.SetKeybinding("", gocui.KeyTab, gocui.ModNone, nextView); err != nil {
+		log.Panic(err)
+	}
+
+	if err := g.SetKeybinding("send", gocui.KeyDelete, gocui.ModNone, backspace); err != nil {
+		log.Panic(err)
+	}
+
+	if err := g.SetKeybinding("send", gocui.KeyBackspace, gocui.ModNone, backspace); err != nil {
+		log.Panic(err)
+	}
+
+	if err := g.SetKeybinding("send", gocui.KeyBackspace2, gocui.ModNone, backspace); err != nil {
+		log.Panic(err)
+	}
+
+	if err := g.SetKeybinding("send", gocui.KeyEnter, gocui.ModNone, sendMsg); err != nil {
+		log.Panic(err)
+	}
+
+	if err := g.SetKeybinding("msg", gocui.KeyArrowUp, gocui.ModNone, arrowUp); err != nil {
+		log.Panic(err)
+	}
+
+	if err := g.SetKeybinding("msg", gocui.KeyArrowDown, gocui.ModNone, arrowDown); err != nil {
+		log.Panic(err)
+	}
 
 	err = g.MainLoop()
 	if err != nil {
-		logx.Error(err)
+		log.Println(err)
 	}
 }

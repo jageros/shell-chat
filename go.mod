@@ -6,6 +6,7 @@ require (
 	github.com/gin-gonic/gin v1.7.4
 	github.com/jageros/hawox v0.0.5
 	github.com/jroimartin/gocui v0.5.0
+	github.com/rocket049/gocui v0.3.2
 	gopkg.in/olahol/melody.v1 v1.0.0-20170518105555-d52139073376
 )
 
