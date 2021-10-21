@@ -13,20 +13,65 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
+	"github.com/jageros/hawox/contextx"
+	"github.com/jageros/hawox/wsc"
 	"log"
+	"net/http"
+	"os"
+	"wechat/types"
 	"wechat/view"
 )
 
 func main() {
-	//ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT)
-	//defer cancel()
+	uid := flag.String("phone", "", "输入手机号码参数")
+	flag.Parse()
+	if *uid == "" {
+		log.Fatal("请携带手机号码参数启动，--phone=10086")
+		os.Exit(-1)
+	}
+	ctx, cancel := contextx.Default()
+	defer cancel()
 
-	view.OnMessage("dekdmkwenkwndklwenklndk\n")
-	view.UpdateOnline("杰（13160676597）\n哲（10086）\n文（10010）\n")
-	view.UpdateOnline("杰（13160676597）\n哲（10086）\n文（10010）\n")
+	h := http.Header{}
+	h.Add("uid", *uid)
 
+	m := wsc.New(ctx)
+	sess, err := m.ConnectWithHeader("ws://127.0.0.1:8888/ws/wechat/1", h, map[string]interface{}{"uid": uid})
+	if err != nil {
+		panic(err)
+	}
 
-	err := view.Run()
+	view.OnSendMsg(func(msg string) {
+		err = sess.Write([]byte(msg))
+		if err != nil {
+			log.Println(err)
+		}
+	})
+
+	m.HandleMessageBinary(func(session *wsc.Session, bytes []byte) {
+		//uid, _ := session.Get("uid")
+		//roomId, _ := session.Get("roomId")
+		msg := &types.Msg{}
+		err := json.Unmarshal(bytes, msg)
+		if err != nil {
+			log.Panicf("msg.Unmarshal err: %v", err)
+			return
+		}
+		switch msg.MsgID {
+		case 1:
+			view.OnMessage(msg.Msg)
+
+		case 2:
+			view.UpdateOnline(msg.Msg)
+
+		default:
+			log.Printf("MsgId=%d Msg=%s", msg.MsgID, msg.Msg)
+		}
+	})
+
+	err = view.Run()
 	if err != nil {
 		log.Fatal(err)
 	}

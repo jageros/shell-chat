@@ -13,17 +13,15 @@
 package view
 
 import (
-	"fmt"
 	"github.com/rocket049/gocui"
 	"log"
-	"time"
-	"wechat/ws"
 )
 
 var (
 	viewArr = []string{"msg", "send"}
 	active  = 1
 	gg      *gocui.Gui
+	onSend  func(msg string)
 )
 
 func setCurrentViewOnTop(g *gocui.Gui, name string) (*gocui.View, error) {
@@ -81,6 +79,10 @@ func quit(g *gocui.Gui, v *gocui.View) error {
 	return gocui.ErrQuit
 }
 
+func OnSendMsg(fn func(msg string)) {
+	onSend = fn
+}
+
 func OnMessage(msg string) {
 	gg.Update(func(gui *gocui.Gui) error {
 		v, err := gui.View("msg")
@@ -111,23 +113,13 @@ func sendMsg(g *gocui.Gui, v *gocui.View) error {
 		return v.SetCursor(0, 0)
 	}
 	str := string(byts)
-	msg, err := g.View("msg")
-	if err != nil {
-		return err
+
+	if onSend != nil {
+		onSend(str)
 	}
 
-	n, err := ws.SendMsg(str)
-	if err != nil {
-		return err
-	}
-
-	msgStr := fmt.Sprintf("[%d]%s(%s): %s\n", n, "我", time.Now().Format("15:04:05"), str)
-	_, err = msg.Write([]byte(msgStr))
-	if err == nil {
-		v.Clear()
-		err = v.SetCursor(0, 0)
-	}
-	return err
+	v.Clear()
+	return v.SetCursor(0, 0)
 }
 
 func arrowUp(g *gocui.Gui, v *gocui.View) error {
@@ -161,6 +153,11 @@ func backspace(g *gocui.Gui, v *gocui.View) error {
 	return nil
 }
 
+func clear(g *gocui.Gui, v *gocui.View) error {
+	v.Clear()
+	return v.SetCursor(0, 0)
+}
+
 func init() {
 	g, err := gocui.NewGui(gocui.OutputNormal)
 	if err != nil {
@@ -185,6 +182,10 @@ func init() {
 	}
 
 	if err := g.SetKeybinding("send", gocui.KeyBackspace, gocui.ModNone, backspace); err != nil {
+		log.Panic(err)
+	}
+
+	if err := g.SetKeybinding("send", gocui.KeyCtrlD, gocui.ModNone, clear); err != nil {
 		log.Panic(err)
 	}
 

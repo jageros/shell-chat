@@ -16,8 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jageros/hawox/flags"
 	"github.com/jageros/hawox/httpx"
-	"github.com/jageros/hawox/ws"
-	"gopkg.in/olahol/melody.v1"
+	"wechat/ws"
 )
 
 const appName = "wechat"
@@ -28,8 +27,5 @@ func main() {
 	httpx.InitializeHttpServer(ctx, func(engine *gin.Engine) {
 		r := engine.Group("ws")
 		ws.Init(ctx, r, flags.Source())
-	})
-	ws.OnMessage(func(session *melody.Session, bytes []byte) {
-		//ws.Broadcast()
 	})
 }

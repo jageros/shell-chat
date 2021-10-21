@@ -42,6 +42,8 @@ type service struct {
 	ctx         contextx.Context
 	m           *melody.Melody
 	callTimeout time.Duration
+	online      map[string]struct{}
+	mx          sync.Mutex
 }
 
 func Init(ctx contextx.Context, r *gin.RouterGroup, relativePath string) {
@@ -49,8 +51,9 @@ func Init(ctx contextx.Context, r *gin.RouterGroup, relativePath string) {
 		ctx:         ctx,
 		m:           melody.New(),
 		callTimeout: time.Second * 5,
+		online:      map[string]struct{}{},
 	}
-	ss.m.HandleMessageBinary(ss.handleMessage)
+	ss.m.HandleMessage(ss.handleMessage)
 	ss.m.HandleConnect(ss.onConnect)
 	ss.m.HandleDisconnect(ss.onDisconnect)
 	r.GET(relativePath, ss.handler)
@@ -59,7 +62,8 @@ func Init(ctx contextx.Context, r *gin.RouterGroup, relativePath string) {
 func (s *service) handler(c *gin.Context) {
 	uid := c.GetHeader("uid")
 	if _, ok := names[uid]; !ok {
-		httpx.ErrInterrupt(c, errcode.InvalidParam)
+		logx.Infof("=====uid=%s", uid)
+		httpx.ErrInterrupt(c, errcode.InvalidParam.WithMsg(uid))
 		return
 	}
 	err := s.m.HandleRequestWithKeys(c.Writer, c.Request, map[string]interface{}{"uid": uid})
@@ -69,16 +73,54 @@ func (s *service) handler(c *gin.Context) {
 }
 
 func (s *service) onConnect(session *melody.Session) {
-
+	uid, exist := session.Get("uid")
+	logx.Infof("on connect uid=%s", uid)
+	if !exist {
+		return
+	}
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	s.online[uid.(string)] = struct{}{}
+	s.updateOnline()
 }
 
 func (s *service) onDisconnect(session *melody.Session) {
+	uid, exist := session.Get("uid")
+	logx.Infof("on disconnect uid=%s", uid)
+	if !exist {
+		return
+	}
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	delete(s.online, uid.(string))
+	s.updateOnline()
+}
 
+func (s *service) updateOnline() {
+	var msg string
+	for id := range s.online {
+		name := names[id]
+		msg = fmt.Sprintf("%s%s(%s)\n", msg, name, id)
+	}
+	var resp = &types.Msg{
+		MsgID: 2,
+		Msg:   msg,
+	}
+	bty, err := json.Marshal(resp)
+	if err != nil {
+		return
+	}
+	err = s.m.BroadcastBinary(bty)
+	if err != nil {
+		logx.Error(err)
+	}
+	logx.Infof("update %s", msg)
 }
 
 func (s *service) handleMessage(session *melody.Session, bytes []byte) {
 	start := time.Now()
 	uid, exist := session.Get("uid")
+	logx.Infof("on msg uid=%s", uid)
 	if !exist {
 		return
 	}
@@ -99,7 +141,7 @@ func (s *service) handleMessage(session *melody.Session, bytes []byte) {
 	if err != nil {
 		return
 	}
-	err = s.m.Broadcast(bty)
+	err = s.m.BroadcastBinary(bty)
 	if err != nil {
 		logx.Error(err)
 	}
