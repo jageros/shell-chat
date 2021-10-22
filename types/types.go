@@ -24,10 +24,10 @@ type Msg struct {
 }
 
 type pkg struct {
-	N  int
-	V1 []byte
-	V2 []byte
-	V3 []byte
+	N  int    `json:"n"`
+	V1 []byte `json:"v_1"`
+	V2 []byte `json:"v_2"`
+	V3 []byte `json:"v_3"`
 }
 
 func Marshal(msg *Msg) ([]byte, error) {
