@@ -27,5 +27,7 @@ func main() {
 	httpx.InitializeHttpServer(ctx, func(engine *gin.Engine) {
 		r := engine.Group("ws")
 		ws.Init(ctx, r, flags.Source())
+	}, func(s *httpx.Server) {
+		s.Port = flags.Options.HttpPort
 	})
 }

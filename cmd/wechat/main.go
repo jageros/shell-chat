@@ -13,50 +13,70 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
+	"fmt"
 	"github.com/jageros/hawox/contextx"
 	"github.com/jageros/hawox/wsc"
 	"log"
 	"net/http"
-	"os"
+	"unicode"
 	"wechat/types"
 	"wechat/view"
 )
 
 func main() {
-	uid := flag.String("phone", "", "输入手机号码参数")
-	flag.Parse()
-	if *uid == "" {
-		log.Fatal("请携带手机号码参数启动，--phone=10086")
-		os.Exit(-1)
-	}
 	ctx, cancel := contextx.Default()
 	defer cancel()
+	var err error
 
-	h := http.Header{}
-	h.Add("uid", *uid)
-
+	var sess *wsc.Session
 	m := wsc.New(ctx)
-	sess, err := m.ConnectWithHeader("ws://127.0.0.1:8888/ws/wechat/1", h, map[string]interface{}{"uid": uid})
-	if err != nil {
-		panic(err)
-	}
+
+	view.OnMessage("请发送本人手机号码加入聊天室！\n")
 
 	view.OnSendMsg(func(msg string) {
-		err = sess.Write([]byte(msg))
+		if sess == nil {
+			if len(msg) != 11 {
+				view.OnMessage("手机号码格式错误！\n")
+				return
+			}
+
+			for _, r := range msg {
+				if !unicode.Is(unicode.Number, r) {
+					view.OnMessage("手机号码格式错误！\n")
+					return
+				}
+			}
+
+			uid := msg
+			h := http.Header{}
+			h.Add("uid", uid)
+			sess, err = m.ConnectWithHeader("ws://wechat.hawtech.cn/ws/wechat/1", h, map[string]interface{}{"uid": uid})
+			if err != nil {
+				view.OnMessage(fmt.Sprintf("创建websocket链接错误，手机号码:%s 错误信息:%v\n", uid, err))
+				return
+			}
+			view.OnMessage("登录成功！\n")
+			return
+		}
+		data := &types.Msg{
+			MsgID: 1,
+			Msg:   msg,
+		}
+		bytes, err := types.Marshal(data)
 		if err != nil {
-			log.Println(err)
+			view.OnMessage(fmt.Sprintf("编码错误: %v", err))
+			return
+		}
+		err = sess.WriteBinary(bytes)
+		if err != nil {
+
 		}
 	})
 
 	m.HandleMessageBinary(func(session *wsc.Session, bytes []byte) {
-		//uid, _ := session.Get("uid")
-		//roomId, _ := session.Get("roomId")
-		msg := &types.Msg{}
-		err := json.Unmarshal(bytes, msg)
+		msg, err := types.Unmarshal(bytes)
 		if err != nil {
-			log.Panicf("msg.Unmarshal err: %v", err)
+			view.OnMessage(fmt.Sprintf("解码错误：%v", err))
 			return
 		}
 		switch msg.MsgID {

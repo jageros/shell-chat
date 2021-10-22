@@ -13,7 +13,6 @@
 package ws
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/jageros/hawox/contextx"
@@ -53,7 +52,7 @@ func Init(ctx contextx.Context, r *gin.RouterGroup, relativePath string) {
 		callTimeout: time.Second * 5,
 		online:      map[string]struct{}{},
 	}
-	ss.m.HandleMessage(ss.handleMessage)
+	ss.m.HandleMessageBinary(ss.handleMessage)
 	ss.m.HandleConnect(ss.onConnect)
 	ss.m.HandleDisconnect(ss.onDisconnect)
 	r.GET(relativePath, ss.handler)
@@ -106,8 +105,9 @@ func (s *service) updateOnline() {
 		MsgID: 2,
 		Msg:   msg,
 	}
-	bty, err := json.Marshal(resp)
+	bty, err := types.Marshal(resp)
 	if err != nil {
+		logx.Errorf("编码错误：%v", err)
 		return
 	}
 	err = s.m.BroadcastBinary(bty)
@@ -120,7 +120,6 @@ func (s *service) updateOnline() {
 func (s *service) handleMessage(session *melody.Session, bytes []byte) {
 	start := time.Now()
 	uid, exist := session.Get("uid")
-	logx.Infof("on msg uid=%s", uid)
 	if !exist {
 		return
 	}
@@ -131,16 +130,23 @@ func (s *service) handleMessage(session *melody.Session, bytes []byte) {
 	defer mux.Unlock()
 	seq += 1
 
-	msg := fmt.Sprintf("[%d]%s(%s): %s\n", seq, name, time.Now().Format("15:04:05"), string(bytes))
-
-	var resp = &types.Msg{
-		MsgID: 1,
-		Msg:   msg,
-	}
-	bty, err := json.Marshal(resp)
+	resp, err := types.Unmarshal(bytes)
 	if err != nil {
+		logx.Errorf("解码错误：%v", err)
 		return
 	}
+
+	msg := fmt.Sprintf("[%d]%s(%s): %s\n", seq, name, time.Now().Format("15:04:05"), resp.Msg)
+	resp.Msg = msg
+	resp.MsgID = 1
+	resp.Seq = seq
+
+	bty, err := types.Marshal(resp)
+	if err != nil {
+		logx.Errorf("编码错误：%v", err)
+		return
+	}
+
 	err = s.m.BroadcastBinary(bty)
 	if err != nil {
 		logx.Error(err)
