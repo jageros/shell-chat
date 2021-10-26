@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/gin-gonic/gin v1.7.4
-	github.com/jageros/hawox v0.0.6
+	github.com/jageros/hawox v0.0.7
 	github.com/rocket049/gocui v0.3.2
 	gopkg.in/olahol/melody.v1 v1.0.0-20170518105555-d52139073376
 )

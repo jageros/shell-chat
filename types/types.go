@@ -14,6 +14,7 @@ package types
 
 import (
 	"encoding/json"
+	"github.com/jageros/hawox/rsa"
 	"math/rand"
 )
 
@@ -46,12 +47,20 @@ func Marshal(msg *Msg) ([]byte, error) {
 			pk.V3 = append(pk.V3, data[i+1])
 		}
 	}
-	return json.Marshal(pk)
+	bts, err := json.Marshal(pk)
+	if err != nil {
+		return nil, err
+	}
+	return rsa.DefaultEncrypt(bts)
 }
 
 func Unmarshal(data []byte) (*Msg, error) {
 	var pk = &pkg{}
-	err := json.Unmarshal(data, pk)
+	bts, err := rsa.DefaultDecrypt(data)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(bts, pk)
 	if err != nil {
 		return nil, err
 	}
